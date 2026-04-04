@@ -69,10 +69,23 @@ export const Captions: React.FC<CaptionsProps> = ({
 				? Math.max(0, fallbackIndex - 1)
 				: Math.max(0, sortedWords.length - 1);
 	const activeChunk = sortedWords[resolvedChunkIndex] ?? null;
-	const activeChunkTokens = (activeChunk?.text ?? '')
+	const rawTokens = (activeChunk?.text ?? '')
 		.split(/\s+/)
 		.map((token) => token.trim())
 		.filter(Boolean);
+
+	// Merge punctuation with preceding word to prevent line breaks
+	const activeChunkTokens = rawTokens.reduce<string[]>((acc, token) => {
+		const isPunctuation = /^[.!?,;:\-—–]+$/.test(token);
+		if (isPunctuation && acc.length > 0) {
+			// Attach punctuation to the previous word
+			acc[acc.length - 1] += token;
+		} else {
+			acc.push(token);
+		}
+		return acc;
+	}, []);
+
 	const isSingleWordChunk = activeChunkTokens.length === 1;
 	const effectiveSidePadding = isSingleWordChunk
 		? Math.max(16, Math.min(42, Math.round(width * 0.035)))

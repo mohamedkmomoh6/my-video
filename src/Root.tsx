@@ -56,6 +56,8 @@ export const RemotionRoot: React.FC = () => {
           autoScaleExtremeWords: true,
           debugCaptions: false,
           imageFolder: undefined,
+          slideCount: 5,
+          slideTypes: undefined,
         }}
         calculateMetadata={async ({props}) => {
           const rawAudioID = typeof props.audioID === 'string' && props.audioID.length > 0 ? props.audioID : 'voiceover';
@@ -76,6 +78,9 @@ export const RemotionRoot: React.FC = () => {
           const imageFolder = getSafeImageFolder(
             typeof props.imageFolder === 'string' ? props.imageFolder : undefined,
           );
+
+          const slideCount = typeof props.slideCount === 'number' ? Math.max(1, props.slideCount) : 5;
+          const slideTypes = Array.isArray(props.slideTypes) ? props.slideTypes : undefined;
 
           const checkStaticFileExists = async (relativePath: string): Promise<boolean> => {
             const url = staticFile(relativePath);
@@ -127,6 +132,8 @@ export const RemotionRoot: React.FC = () => {
               autoScaleExtremeWords,
               debugCaptions,
               imageFolder,
+              slideCount,
+              slideTypes,
             },
           };
         }}

@@ -21,13 +21,20 @@ for audio in *.mp3; do
         echo -e "  [${RED}!!${NC}] Skript fehlt: scripts/$base_name.txt (Whisper-Fallback wird genutzt)"
     fi
     
-    # 2. Check Bilder-Ordner
+    # 2. Check Slides-Ordner (PNG oder MP4 pro Index)
     if [ -d "../public/slides/$base_name" ]; then
-        file_count=$(ls -1 "../public/slides/$base_name" | wc -l)
-        if [ "$file_count" -ge 5 ]; then
-            echo -e "  [${GREEN}OK${NC}] Bilder-Ordner gefunden ($file_count Dateien)."
+        expected=5
+        valid_count=0
+        for ((i=0; i<expected; i++)); do
+            if [ -f "../public/slides/$base_name/slide${i}.png" ] || [ -f "../public/slides/$base_name/slide${i}.mp4" ]; then
+                valid_count=$((valid_count + 1))
+            fi
+        done
+
+        if [ "$valid_count" -ge "$expected" ]; then
+            echo -e "  [${GREEN}OK${NC}] Slides-Ordner vollständig ($valid_count/$expected als PNG/MP4)."
         else
-            echo -e "  [${RED}!!${NC}] Bilder-Ordner hat nur $file_count Dateien (5 benötigt)."
+            echo -e "  [${RED}!!${NC}] Slides unvollständig: $valid_count/$expected gefunden (erwartet slideX.png ODER slideX.mp4)."
         fi
     else
         echo -e "  [${RED}!!${NC}] Bilder-Ordner fehlt: public/slides/$base_name"

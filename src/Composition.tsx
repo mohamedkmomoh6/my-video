@@ -2,10 +2,8 @@ import {useEffect, useMemo, useState} from 'react';
 import {
 	AbsoluteFill,
 	Audio,
-	Img,
 	interpolate,
 	Sequence,
-	spring,
 	staticFile,
 	useCurrentFrame,
 	useVideoConfig,
@@ -15,6 +13,12 @@ import {type CaptionStylePresetConfig} from './caption-style-presets';
 import {FilmGrain} from './FilmGrain';
 import {HookOverlay} from './HookOverlay';
 import {ProgressBar} from './ProgressBar';
+import {SlideVideoComponent} from './SlideVideo';
+import {
+	TIKTOK_SAFEZONE_BOTTOM_PX,
+	TIKTOK_SAFEZONE_SIDE_PX,
+	TIKTOK_SAFEZONE_TOP_PX,
+} from './style-constants';
 import {groupWhisperWordsToChunks, type WhisperWord} from './subtitle-utils';
 
 export type MyCompositionProps = {
@@ -27,6 +31,8 @@ export type MyCompositionProps = {
 	autoScaleExtremeWords?: boolean;
 	debugCaptions?: boolean;
 	imageFolder?: string;
+	slideCount?: number;
+	slideTypes?: ('image' | 'video')[];
 };
 
 type TranscriptWord = {
@@ -187,6 +193,8 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 	autoScaleExtremeWords = true,
 	debugCaptions = false,
 	imageFolder,
+	slideCount = 5,
+	slideTypes,
 }) => {
 	const resolvedChunkWindowSeconds =
 		speedMode && speedMode in SPEED_PRESETS
@@ -201,65 +209,22 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 	const [transcriptionWords, setTranscriptionWords] = useState<TranscriptWord[]>([]);
 	const [voiceRanges, setVoiceRanges] = useState<TimeRange[]>([]);
 	const [hookText, setHookText] = useState('');
-	const [hookStartFrame, setHookStartFrame] = useState(0);
-	const {fps, durationInFrames} = useVideoConfig();
+	const {fps, durationInFrames, width, height} = useVideoConfig();
 	const currentFrame = useCurrentFrame();
 	const currentTime = currentFrame / fps;
 	const voiceoverSrc = staticFile(`${audioID}.mp3`);
 	const slideSources = useMemo(() => {
 		// Fallback-Logik: Prüfe imageFolder, sonst default
 		const folder = imageFolder || 'slides/default';
-		return Array.from({length: 5}, (_, index) => staticFile(`${folder}/slide${index}.png`));
-	}, [imageFolder]);
-
-	// Hook-Zoom: Aggressives Reinziehen mit Spring, Rotation und Blur über 10 Frames
-	// Danach: Ken-Burns-Effekt mit langsamem Zoom und subtiler Kamerafahrt
-	const getImageAnimations = (frame: number, slideDurationInFrames: number) => {
-		if (frame < 10) {
-			const springVal = spring({
-				fps,
-				frame,
-				config: {damping: 8, stiffness: 280},
-			});
-
-			const scale = interpolate(springVal, [0, 1], [1.5, 1.05], {
-				extrapolateLeft: 'clamp',
-				extrapolateRight: 'clamp',
-			});
-
-			const rotation = interpolate(springVal, [0, 1], [-3, 0], {
-				extrapolateLeft: 'clamp',
-				extrapolateRight: 'clamp',
-			});
-
-			const blur = interpolate(springVal, [0, 1], [15, 0], {
-				extrapolateLeft: 'clamp',
-				extrapolateRight: 'clamp',
-			});
-
-			return {scale, rotation, blur, translateX: 0, translateY: 0};
-		}
-
-		// Phase 2: Ken-Burns-Effekt (Frames 10+)
-		const kenBurnsEndFrame = Math.max(11, slideDurationInFrames);
-		const kenBurnsScale = interpolate(frame, [10, kenBurnsEndFrame], [1.05, 1.15], {
-			extrapolateLeft: 'clamp',
-			extrapolateRight: 'clamp',
+		return Array.from({length: slideCount}, (_, index) => {
+			const slideType = slideTypes && slideTypes[index] ? slideTypes[index] : 'image';
+			const ext = slideType === 'video' ? 'mp4' : 'png';
+			return {
+				src: staticFile(`${folder}/slide${index}.${ext}`),
+				type: slideType,
+			};
 		});
-
-		// Subtile Kamerafahrt: Langsam nach oben-links driften
-		const translateX = interpolate(frame, [10, kenBurnsEndFrame], [0, -12], {
-			extrapolateLeft: 'clamp',
-			extrapolateRight: 'clamp',
-		});
-
-		const translateY = interpolate(frame, [10, kenBurnsEndFrame], [0, -8], {
-			extrapolateLeft: 'clamp',
-			extrapolateRight: 'clamp',
-		});
-
-		return {scale: kenBurnsScale, rotation: 0, blur: 0, translateX, translateY};
-	};
+	}, [imageFolder, slideCount, slideTypes]);
 
 	const getMusicVolume = (frame: number): number => {
 		const currentTime = frame / fps;
@@ -362,11 +327,6 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 
 			const mergedVoiceRanges = mergeVoiceRanges(parsedWords);
 			const firstSentenceText = getFirstSentenceText(parsedWords);
-			const firstSpokenWord = parsedWords.find((word) => word.text.trim().length > 0);
-			const firstSpokenStartFrame = Math.max(
-				0,
-				Math.round((firstSpokenWord?.start ?? 0) * fps)
-			);
 			const normalizedHookText = normalizeCaptionText(firstSentenceText);
 			const dedupedGroupedWords = groupedWords.filter((chunk, index) => {
 				if (index !== 0 || normalizedHookText.length === 0) {
@@ -392,7 +352,6 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 				setTranscriptionWords(parsedWords);
 				setVoiceRanges(mergedVoiceRanges);
 				setHookText(firstSentenceText);
-				setHookStartFrame(firstSpokenStartFrame);
 			}
 		};
 
@@ -405,22 +364,15 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 		};
 	}, [audioID, gapThreshold, resolvedChunkWindowSeconds]);
 
-	const progressBarBottom = 28;
+	const topSafeInset = Math.max(TIKTOK_SAFEZONE_TOP_PX, Math.round(height * 0.11));
+	const sideSafeInset = Math.max(TIKTOK_SAFEZONE_SIDE_PX, Math.round(width * 0.06));
+	const bottomSafeInset = Math.max(TIKTOK_SAFEZONE_BOTTOM_PX, Math.round(height * 0.17));
+	const progressBarBottom = bottomSafeInset;
 	const progressBarHeight = 6;
 	const captionToProgressGap = 20;
 	const captionBottomSafeArea = progressBarBottom + progressBarHeight + captionToProgressGap;
 	const sfxDurationFrames = Math.max(4, Math.round(fps * 0.22));
-	const hookDurationFrames = Math.max(1, Math.round(fps * 2));
 	const hookMinSlideSeconds = 2;
-	const hookBackgroundBrightness = interpolate(
-		currentFrame,
-		[hookStartFrame, hookStartFrame + 50, hookStartFrame + hookDurationFrames],
-		[0.4, 0.4, 1],
-		{
-		extrapolateLeft: 'clamp',
-		extrapolateRight: 'clamp',
-		}
-	);
 	const images = slideSources;
 	const totalDurationSeconds = durationInFrames / fps;
 	const calculatedBreakpoints = useMemo(
@@ -444,6 +396,19 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 			: totalDurationSeconds;
 	const currentSlideStartFrame = Math.max(0, Math.round(currentSlideStartSec * fps));
 	const currentSlideEndFrame = Math.max(currentSlideStartFrame + 1, Math.round(currentSlideEndSec * fps));
+	const hookDurationFrames = Math.max(
+		1,
+		Math.round((calculatedBreakpoints[0] ?? hookMinSlideSeconds) * fps)
+	);
+	const hookBackgroundBrightness = interpolate(
+		currentFrame,
+		[0, Math.min(50, hookDurationFrames), hookDurationFrames],
+		[0.4, 0.4, 1],
+		{
+		extrapolateLeft: 'clamp',
+		extrapolateRight: 'clamp',
+		}
+	);
 	const currentSlideCaptionWords = useMemo(() => {
 		const startSec = currentSlideStartSec;
 		const endSecExclusive = Math.max(startSec, currentSlideEndSec - 0.001);
@@ -474,8 +439,7 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 		);
 	};
 	
-	const isHookWindowActive =
-		currentFrame >= hookStartFrame && currentFrame < hookStartFrame + hookDurationFrames;
+	const isHookWindowActive = currentFrame < hookDurationFrames;
 
 	const getSfxTargetVolume = (isPowerWord: boolean): number => {
 		return isPowerWord ? 0.8 : 0.55;
@@ -549,33 +513,27 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 					1,
 					currentSlideEndFrame - currentSlideStartFrame
 				);
-				const {scale, rotation, blur, translateX, translateY} = getImageAnimations(
-					relativeFrame,
-					slideDuration
-				);
+
+				const currentSlide = images[safeSlideIndex];
+				const isVideo = currentSlide.type === 'video';
 
 				return (
-					<Img
+					<SlideVideoComponent
 						key={`slide-${safeSlideIndex}-${currentSlideStartFrame}`}
-						src={images[safeSlideIndex]}
-						style={{
-							position: 'absolute',
-							inset: 0,
-							width: '100%',
-							height: '100%',
-							objectFit: 'cover',
-							opacity: 0.6,
-							transform: `scale(${scale}) rotate(${rotation}deg) translate(${translateX}px, ${translateY}px)`,
-							filter: `brightness(${hookBackgroundBrightness}) blur(${blur}px)`,
-						}}
+						src={currentSlide.src}
+						isVideo={isVideo}
+						relativeFrame={relativeFrame}
+						slideDuration={slideDuration}
+						fps={fps}
+						brightness={hookBackgroundBrightness}
 						onError={() => {
-							console.warn(`⚠️ Slide ${safeSlideIndex} not found for folder "${imageFolder}"`);
+							console.warn(`⚠️ Slide ${safeSlideIndex} (${isVideo ? 'video' : 'image'}) not found for folder "${imageFolder}"`);
 						}}
 					/>
 				);
 			})() : null}
 
-			<Sequence from={hookStartFrame} durationInFrames={hookDurationFrames}>
+			<Sequence from={0} durationInFrames={hookDurationFrames}>
 				<HookOverlay text={hookText} />
 			</Sequence>
 
@@ -587,7 +545,7 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 					flexDirection: 'column',
 					alignItems: 'center',
 					justifyContent: 'flex-end',
-					padding: '0 80px',
+					padding: `0 ${sideSafeInset}px`,
 				}}
 			>
 				{debugCaptions ? (
@@ -595,7 +553,7 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 						<div
 							style={{
 								position: 'absolute',
-								top: 80,
+								top: topSafeInset,
 								left: '50%',
 								transform: 'translateX(-50%)',
 								color: 'yellow',
@@ -612,8 +570,8 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 						<p
 							style={{
 								position: 'absolute',
-								top: 24,
-								left: 24,
+								top: Math.max(16, topSafeInset - 56),
+								left: sideSafeInset,
 								margin: 0,
 								color: 'yellow',
 								fontSize: 48,
@@ -648,8 +606,8 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 				<div
 					style={{
 						position: 'absolute',
-						left: 80,
-						right: 80,
+						left: sideSafeInset,
+						right: sideSafeInset,
 						bottom: progressBarBottom,
 					}}
 				>

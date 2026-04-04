@@ -2,6 +2,8 @@ import os
 import subprocess
 import json
 import sys
+import multiprocessing
+import re
 
 # Konfiguration
 AUDIO_DIR = "./audio_input"
@@ -67,16 +69,51 @@ def render_reels():
         else:
             print(f"📁 Nutze Standard-Slides-Ordner (slides/default)")
 
+        # Slides (PNG/MP4) erkennen und Typen ableiten
+        slide_count = 5  # Default
+        slide_types = []
+        effective_slides_path = slides_path if os.path.isdir(slides_path) else os.path.join(PROJECT_ROOT, "public", "slides", "default")
+        if os.path.isdir(effective_slides_path):
+            pattern = re.compile(r"^slide(\d+)\.(png|mp4)$", re.IGNORECASE)
+            by_index = {}
+
+            for filename in os.listdir(effective_slides_path):
+                match = pattern.match(filename)
+                if not match:
+                    continue
+                idx = int(match.group(1))
+                ext = match.group(2).lower()
+                by_index.setdefault(idx, set()).add(ext)
+
+            if by_index:
+                # Nutze zusammenhängende Slides ab Index 0
+                contiguous_indices = []
+                i = 0
+                while i in by_index:
+                    contiguous_indices.append(i)
+                    i += 1
+
+                if contiguous_indices:
+                    slide_count = len(contiguous_indices)
+                    for idx in contiguous_indices:
+                        exts = by_index[idx]
+                        # MP4 priorisieren, falls beides vorhanden ist
+                        slide_types.append("video" if "mp4" in exts else "image")
+
+            print(f"🖼️  {slide_count} Slides gefunden (PNG/MP4) | Typen: {slide_types if slide_types else 'auto'}")
+
         # Props an Remotion übergeben
-        # Wir übergeben den Namen, damit Remotion das richtige Audio & JSON lädt
         input_props = {
             "audioID": base_name,
-            "speedMode": "balanced",  # Hier: natural, balanced oder aggressive
-            "captionStylePreset": selected_preset,  # Hier wird das gewählte Preset genutzt
+            "speedMode": "balanced",
+            "captionStylePreset": selected_preset,
             "autoScaleExtremeWords": True,
+            "slideCount": max(1, slide_count),
         }
 
-        # Füge imageFolder hinzu wenn vorhanden
+        if slide_types:
+            input_props["slideTypes"] = slide_types
+
         if image_folder:
             input_props["imageFolder"] = image_folder
 
@@ -103,12 +140,16 @@ def render_reels():
         # elif "shorts" in base_name:
         #     input_props["captionStylePreset"] = "youtubeShorts"
 
+        cores = max(1, multiprocessing.cpu_count() // 2)
+
         # Remotion Render Befehl
+        # Entry point (src/index.ts) wird als erstes Argument nach "render" benötigt
         cmd = [
-            *remotion_cmd, "render", REMOTION_COMP_ID, output_path,
+            *remotion_cmd, "render", "src/index.ts", REMOTION_COMP_ID, output_path,
             "--props", json.dumps(input_props),
-            "--concurrency=2", # Nutzt die Kerne deines Oracle Servers
-            "--gl=angle"       # Oft nötig auf Headless Linux Servern
+            "--concurrency=1",  # Single concurrency für Stabilität mit Video Extraction
+            "--gl=angle",       # Oft nötig auf Headless Linux Servern
+            "--timeout=900000"  # 900 Sekunden (15 min) Timeout für gesamten Render-Prozess
         ]
 
         try:
