@@ -1,12 +1,10 @@
 import {useState} from 'react';
-import {Video, OffthreadVideo, Img, interpolate, spring, useRemotionEnvironment} from 'remotion';
+import {Video, OffthreadVideo, Img, interpolate, spring, useRemotionEnvironment, useCurrentFrame, useVideoConfig} from 'remotion';
 
 type SlideVideoProps = {
 	src: string;
 	isVideo: boolean;
-	relativeFrame: number;
 	slideDuration: number;
-	fps: number;
 	brightness: number;
 	style?: React.CSSProperties;
 	onError?: () => void;
@@ -15,18 +13,82 @@ type SlideVideoProps = {
 export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 	src,
 	isVideo,
-	relativeFrame,
 	slideDuration,
-	fps,
 	brightness,
 	style,
 	onError,
 }) => {
 	const [videoDurationInFrames, setVideoDurationInFrames] = useState<number | null>(null);
 	const env = useRemotionEnvironment();
+	const currentFrame = useCurrentFrame();
+	const {fps} = useVideoConfig();
+	const relativeFrame = currentFrame;
 
-	// Hook-Zoom: Aggressives Reinziehen mit Spring, Rotation und Blur über 10 Frames
+	// Hook-Zoom/Ken-Burns Steuerung pro Slide
 	const getAnimations = () => {
+		// Für Videos: Während der Wiedergabe KEIN Zoom/Ken-Burns.
+		// Ken-Burns nur im Restfenster nach Video-Ende bis Slidewechsel.
+		if (isVideo) {
+			const videoEndFrame = videoDurationInFrames ?? slideDuration;
+
+			if (relativeFrame < videoEndFrame) {
+				return {scale: 1, rotation: 0, blur: 0, translateX: 0, translateY: 0};
+			}
+
+			const remainingFrames = Math.max(0, slideDuration - videoEndFrame);
+			if (remainingFrames <= 1) {
+				return {scale: 1, rotation: 0, blur: 0, translateX: 0, translateY: 0};
+			}
+
+			const intensityFactor = interpolate(remainingFrames, [2, 8, 20, 45], [0.2, 0.35, 0.75, 1], {
+				extrapolateLeft: 'clamp',
+				extrapolateRight: 'clamp',
+			});
+			const isCinematicShortWindow = remainingFrames <= 12;
+			const targetScale = isCinematicShortWindow
+				? 1 + 0.06 * intensityFactor
+				: 1 + 0.15 * intensityFactor;
+			const targetTranslateX = isCinematicShortWindow ? 0 : -12 * intensityFactor;
+			const targetTranslateY = isCinematicShortWindow
+				? -4 * intensityFactor
+				: -8 * intensityFactor;
+
+			const kenBurnsStartFrame = videoEndFrame;
+			const kenBurnsEndFrame = Math.max(kenBurnsStartFrame + 1, slideDuration);
+			const kenBurnsScale = interpolate(
+				relativeFrame,
+				[kenBurnsStartFrame, kenBurnsEndFrame],
+				[1.0, targetScale],
+				{
+					extrapolateLeft: 'clamp',
+					extrapolateRight: 'clamp',
+				}
+			);
+
+			const translateX = interpolate(
+				relativeFrame,
+				[kenBurnsStartFrame, kenBurnsEndFrame],
+				[0, targetTranslateX],
+				{
+					extrapolateLeft: 'clamp',
+					extrapolateRight: 'clamp',
+				}
+			);
+
+			const translateY = interpolate(
+				relativeFrame,
+				[kenBurnsStartFrame, kenBurnsEndFrame],
+				[0, targetTranslateY],
+				{
+					extrapolateLeft: 'clamp',
+					extrapolateRight: 'clamp',
+				}
+			);
+
+			return {scale: kenBurnsScale, rotation: 0, blur: 0, translateX, translateY};
+		}
+
+		// Phase 1: Hook-Zoom (erste 10 Frames)
 		if (relativeFrame < 10) {
 			const springVal = spring({
 				fps,
@@ -52,30 +114,20 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 			return {scale, rotation, blur, translateX: 0, translateY: 0};
 		}
 
-		// Phase 2: Ken-Burns-Effekt (Frames 10+)
-		// Für Videos: erst Video abspielen, dann Ken Burns auf End-Frame
-		const videoEndFrame = videoDurationInFrames ?? slideDuration;
-		const holdStartFrame = Math.min(videoEndFrame, slideDuration);
-
-		let kenBurnsFrame = relativeFrame;
-		if (isVideo && relativeFrame < holdStartFrame) {
-			// Video läuft noch, keine Ken Burns
-			return {scale: 1, rotation: 0, blur: 0, translateX: 0, translateY: 0};
-		}
-
-		// Ab hier: Ken Burns Effect (nach Video-Ende oder für Images)
-		const kenBurnsEndFrame = Math.max(holdStartFrame + 10, slideDuration);
-		const kenBurnsScale = interpolate(kenBurnsFrame, [holdStartFrame, kenBurnsEndFrame], [1.05, 1.15], {
+		// Phase 3: Für Bilder - Ken Burns nach Frame 10
+		const kenBurnsStartFrame = 10;
+		const kenBurnsEndFrame = Math.max(kenBurnsStartFrame + 20, slideDuration);
+		const kenBurnsScale = interpolate(relativeFrame, [kenBurnsStartFrame, kenBurnsEndFrame], [1.05, 1.15], {
 			extrapolateLeft: 'clamp',
 			extrapolateRight: 'clamp',
 		});
 
-		const translateX = interpolate(kenBurnsFrame, [holdStartFrame, kenBurnsEndFrame], [0, -12], {
+		const translateX = interpolate(relativeFrame, [kenBurnsStartFrame, kenBurnsEndFrame], [0, -12], {
 			extrapolateLeft: 'clamp',
 			extrapolateRight: 'clamp',
 		});
 
-		const translateY = interpolate(kenBurnsFrame, [holdStartFrame, kenBurnsEndFrame], [0, -8], {
+		const translateY = interpolate(relativeFrame, [kenBurnsStartFrame, kenBurnsEndFrame], [0, -8], {
 			extrapolateLeft: 'clamp',
 			extrapolateRight: 'clamp',
 		});
@@ -104,8 +156,10 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 					src={src}
 					style={commonStyles}
 					muted={true}
-					delayRenderTimeoutInMilliseconds={240000}
-					delayRenderRetries={4}
+					playbackRate={1}
+					loop={false}
+					delayRenderTimeoutInMilliseconds={300000}
+					delayRenderRetries={8}
 					onError={() => {
 						console.warn(`⚠️ Video slide not found: ${src}`);
 						onError?.();
@@ -119,6 +173,8 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 				src={src}
 				style={commonStyles}
 				muted={true}
+				playbackRate={1}
+				loop={false}
 				onLoadedMetadata={(e) => {
 					const videoElement = e.target as HTMLVideoElement;
 					const durationSeconds = videoElement.duration;
