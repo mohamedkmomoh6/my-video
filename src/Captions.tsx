@@ -4,6 +4,7 @@ import {
 	type CaptionStylePresetConfig,
 	DEFAULT_CAPTION_STYLE_PRESETS,
 } from './caption-style-presets';
+import {getAccentColorByPreset} from './style-constants';
 
 const {fontFamily} = loadFont('normal', {
 	weights: ['900'],
@@ -56,6 +57,11 @@ export const Captions: React.FC<CaptionsProps> = ({
 	);
 	const captionLineHeight = preset.lineHeight;
 	const maxCaptionLines = Math.max(1, Math.min(3, preset.maxLines));
+	const accentColor = getAccentColorByPreset(captionStylePreset);
+	const highlightGlow =
+		captionStylePreset === 'performanceOptimizer'
+			? `0px 3px 6px rgba(0, 0, 0, 0.9), 0 0 18px ${accentColor}AA`
+			: '0px 3px 6px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 215, 0, 0.75)';
 
 	const sortedWords = [...words].sort((a, b) => a.start - b.start);
 	const activeChunkIndex = sortedWords.findIndex(
@@ -92,11 +98,18 @@ export const Captions: React.FC<CaptionsProps> = ({
 		: sidePadding;
 	const availableWidthPx = Math.max(140, width - effectiveSidePadding * 2);
 	const singleWordLength = activeChunkTokens[0]?.length ?? 0;
+	const singleWordHasExtremeLength = isSingleWordChunk && singleWordLength >= 18;
+	const singleWordVisualPaddingPx = 28;
+	const singleWordMaxTextWidthPx = Math.max(80, availableWidthPx - singleWordVisualPaddingPx);
+	const singleWordMaxPopScale = singleWordHasExtremeLength ? 1.06 : 1.2;
 	const singleWordAutoFontSize = Math.max(
 		42,
 		Math.min(
 			110,
-			Math.round((availableWidthPx / Math.max(1, singleWordLength)) * 2.1)
+			Math.round(
+				(singleWordMaxTextWidthPx / (Math.max(1, singleWordLength) * 0.74)) /
+					singleWordMaxPopScale
+			)
 		)
 	);
 	const estimatedCharWidthFactor = 0.62;
@@ -111,7 +124,8 @@ export const Captions: React.FC<CaptionsProps> = ({
 			? Math.floor((responsiveFontSize * maxCaptionLines) / estimatedLinesAtResponsive)
 			: responsiveFontSize;
 	const singleWordWidthFitFontSize = Math.floor(
-		availableWidthPx / (Math.max(1, singleWordLength) * 0.68)
+		(singleWordMaxTextWidthPx / (Math.max(1, singleWordLength) * 0.74)) /
+			singleWordMaxPopScale
 	);
 	const preferredFontSize =
 		autoScaleExtremeWords && isSingleWordChunk
@@ -184,6 +198,8 @@ export const Captions: React.FC<CaptionsProps> = ({
 				extrapolateRight: 'clamp',
 		  })
 		: 1;
+	const effectivePopScale =
+		isSingleWordChunk && singleWordHasExtremeLength ? Math.min(1.06, popScale) : popScale;
 	const stableMinHeightEm = Math.max(1.4, Math.min(2, 1.2 + chunkWindowSeconds * 0.1));
 
 	return (
@@ -210,8 +226,8 @@ export const Captions: React.FC<CaptionsProps> = ({
 					lineHeight: captionLineHeight,
 					textAlign: 'center',
 					overflow: 'hidden',
-					overflowWrap: 'anywhere',
-					wordBreak: 'break-word',
+					overflowWrap: 'normal',
+					wordBreak: 'normal',
 					hyphens: 'none',
 					whiteSpace: 'normal',
 					WebkitTextStroke: '2px black',
@@ -229,12 +245,12 @@ export const Captions: React.FC<CaptionsProps> = ({
 								display: 'inline-block',
 								marginRight:
 									index === activeChunkTokens.length - 1 ? '0' : `${preset.tokenGapEm}em`,
-								color: isHighlighted ? '#FFD700' : 'white',
+								color: isHighlighted ? accentColor : 'white',
 								opacity: isHighlighted ? 1 : isAlreadySpoken ? 0.75 : 0.45,
-								transform: isHighlighted ? `scale(${popScale})` : 'scale(1)',
+								transform: isHighlighted ? `scale(${effectivePopScale})` : 'scale(1)',
 								transformOrigin: 'center center',
 								textShadow: isHighlighted
-									? '0px 3px 6px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 215, 0, 0.75)'
+									? highlightGlow
 									: '0px 3px 6px rgba(0, 0, 0, 0.9)',
 							}}
 						>

@@ -1,6 +1,6 @@
 import {loadFont} from '@remotion/google-fonts/Montserrat';
 import {AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
-import {BACKGROUND, PRIMARY} from './style-constants';
+import {getAccentColorByPreset} from './style-constants';
 
 const {fontFamily} = loadFont('normal', {
 	weights: ['900'],
@@ -8,13 +8,19 @@ const {fontFamily} = loadFont('normal', {
 
 type HookOverlayProps = {
 	text: string;
+	captionStylePreset?: string;
 };
 
-export const HookOverlay: React.FC<HookOverlayProps> = ({text}) => {
+export const HookOverlay: React.FC<HookOverlayProps> = ({text, captionStylePreset}) => {
 	const currentFrame = useCurrentFrame();
 	const {fps, width, height} = useVideoConfig();
 	const shortSide = Math.min(width, height);
 	const responsiveFontSize = Math.max(56, Math.min(104, Math.round(shortSide * 0.082)));
+	const accentColor = getAccentColorByPreset(captionStylePreset);
+	const hookGlow =
+		captionStylePreset === 'performanceOptimizer'
+			? `0 0 20px ${accentColor}, 0 0 40px ${accentColor}88, 0 10px 24px rgba(0, 0, 0, 0.78)`
+			: '0 0 18px rgba(255, 215, 0, 0.75), 0 0 36px rgba(255, 215, 0, 0.55), 0 10px 24px rgba(0, 0, 0, 0.75)';
 
 	if (!text) {
 		return null;
@@ -54,8 +60,8 @@ export const HookOverlay: React.FC<HookOverlayProps> = ({text}) => {
 				opacity,
 				pointerEvents: 'none',
 				padding: '0 88px',
-				backgroundColor: BACKGROUND,
-				boxShadow: `inset 0 0 0 9999px rgba(0, 0, 0, 0.8)`,
+				background:
+					'linear-gradient(180deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0.3) 55%, rgba(0, 0, 0, 0.18) 100%)',
 			}}
 		>
 			<div
@@ -73,10 +79,9 @@ export const HookOverlay: React.FC<HookOverlayProps> = ({text}) => {
 					overflowWrap: 'anywhere',
 					wordBreak: 'break-word',
 					whiteSpace: 'normal',
-					color: PRIMARY,
+					color: accentColor,
 					WebkitTextStroke: '2px rgba(0, 0, 0, 0.9)',
-					textShadow:
-						'0 0 18px rgba(255, 215, 0, 0.75), 0 0 36px rgba(255, 215, 0, 0.55), 0 10px 24px rgba(0, 0, 0, 0.75)',
+					textShadow: hookGlow,
 				}}
 			>
 				{text}

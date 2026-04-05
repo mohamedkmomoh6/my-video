@@ -54,6 +54,8 @@ const SPEED_PRESETS = {
 	natural: 2.8,
 } as const;
 
+const END_FADE_OUT_FRAMES = 15;
+
 const mergeVoiceRanges = (words: TranscriptWord[], maxGapSeconds = 0.08): TimeRange[] => {
 	if (words.length === 0) {
 		return [];
@@ -423,21 +425,8 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 			.filter((word) => word.end > word.start);
 	}, [captionWords, currentSlideEndSec, currentSlideStartSec]);
 	
-	// Voiceover-Dauer berechnen: Letztes Wort Ende
-	const voiceoverEndSeconds = transcriptionWords.length > 0 
-		? Math.max(...transcriptionWords.map((w) => w.end))
-		: totalDurationSeconds;
-	const voiceoverEndFrame = Math.round(voiceoverEndSeconds * fps);
-	
-	// Audio-Fade-out über die letzten 15 Frames nach Voiceover-Ende (synchron zur Schwarzblende)
-	const getAudioFadeOut = (frame: number): number => {
-		return interpolate(
-			frame,
-			[voiceoverEndFrame - 15, durationInFrames],
-			[1, 0],
-			{extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}
-		);
-	};
+	const audioEndFrame = Math.max(0, durationInFrames - END_FADE_OUT_FRAMES);
+	const fadeOutStartFrame = Math.min(audioEndFrame, Math.max(0, durationInFrames - 1));
 	
 	const isHookWindowActive = currentFrame < hookDurationFrames;
 
@@ -449,8 +438,8 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 		return frame >= startFrame && frame < startFrame + sfxDurationFrames;
 	};
 
-	const voiceoverVolume = 0.9 * getAudioFadeOut(currentFrame);
-	const desiredMusicVolume = getMusicVolume(currentFrame) * getAudioFadeOut(currentFrame);
+	const voiceoverVolume = 0.9;
+	const desiredMusicVolume = getMusicVolume(currentFrame);
 	const cappedMusicVolume = Math.min(
 		desiredMusicVolume,
 		Math.max(0, 1 - voiceoverVolume)
@@ -508,33 +497,31 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 				// Während Hook: slide0, ansonsten: aktuelle Slide
 				const displayedSlideIndex = isHookWindowActive ? 0 : currentSlideIndex;
 				const safeSlideIndex = Math.min(displayedSlideIndex, images.length - 1);
-				const relativeFrame = Math.max(0, currentFrame - currentSlideStartFrame);
-				const slideDuration = Math.max(
-					1,
-					currentSlideEndFrame - currentSlideStartFrame
-				);
-
 				const currentSlide = images[safeSlideIndex];
 				const isVideo = currentSlide.type === 'video';
+				const slideDurationFrames = currentSlideEndFrame - currentSlideStartFrame;
 
 				return (
-					<SlideVideoComponent
-						key={`slide-${safeSlideIndex}-${currentSlideStartFrame}`}
-						src={currentSlide.src}
-						isVideo={isVideo}
-						relativeFrame={relativeFrame}
-						slideDuration={slideDuration}
-						fps={fps}
-						brightness={hookBackgroundBrightness}
-						onError={() => {
-							console.warn(`⚠️ Slide ${safeSlideIndex} (${isVideo ? 'video' : 'image'}) not found for folder "${imageFolder}"`);
-						}}
-					/>
+					<Sequence
+						key={`slide-sequence-${safeSlideIndex}-${currentSlideStartFrame}`}
+						from={currentSlideStartFrame}
+						durationInFrames={slideDurationFrames}
+					>
+						<SlideVideoComponent
+							src={currentSlide.src}
+							isVideo={isVideo}
+							slideDuration={slideDurationFrames}
+							brightness={hookBackgroundBrightness}
+							onError={() => {
+								console.warn(`⚠️ Slide ${safeSlideIndex} (${isVideo ? 'video' : 'image'}) not found for folder "${imageFolder}"`);
+							}}
+						/>
+					</Sequence>
 				);
 			})() : null}
 
 			<Sequence from={0} durationInFrames={hookDurationFrames}>
-				<HookOverlay text={hookText} />
+				<HookOverlay text={hookText} captionStylePreset={captionStylePreset} />
 			</Sequence>
 
 			{/* 2. Die Untertitel + Progress Bar Container */}
@@ -611,19 +598,19 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 						bottom: progressBarBottom,
 					}}
 				>
-					<ProgressBar />
+					<ProgressBar captionStylePreset={captionStylePreset} />
 				</div>
 			</AbsoluteFill>
 
 			<FilmGrain />
 
-			{/* 3. Schwarzblende am Videoende über die letzten 15 Frames */}
+			{/* 3. Schwarzblende erst NACH Audio-Ende über den Nachlauf */}
 			<AbsoluteFill
 				style={{
 					backgroundColor: '#000',
 					opacity: interpolate(
 						currentFrame,
-						[voiceoverEndFrame - 15, durationInFrames],
+						[fadeOutStartFrame, durationInFrames],
 						[0, 1],
 						{extrapolateLeft: 'clamp', extrapolateRight: 'clamp'}
 					),

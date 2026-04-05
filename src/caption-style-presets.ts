@@ -48,4 +48,16 @@ export const DEFAULT_CAPTION_STYLE_PRESETS: Record<string, CaptionStylePresetCon
 		maxWidth: '82%',
 		tokenGapEm: 0.14,
 	},
+	performanceOptimizer: {
+		sidePaddingPct: 0.11,
+		sidePaddingMin: 52,
+		sidePaddingMax: 120,
+		fontScale: 0.068,
+		fontMin: 52,
+		fontMax: 88,
+		lineHeight: 1.04,
+		maxLines: 3,
+		maxWidth: '85%',
+		tokenGapEm: 0.14,
+	},
 };

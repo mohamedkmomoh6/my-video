@@ -149,7 +149,7 @@ def render_reels():
             "--props", json.dumps(input_props),
             "--concurrency=1",  # Single concurrency für Stabilität mit Video Extraction
             "--gl=angle",       # Oft nötig auf Headless Linux Servern
-            "--timeout=900000"  # 900 Sekunden (15 min) Timeout für gesamten Render-Prozess
+            "--timeout=1800000"  # 1800 Sekunden (30 min) Timeout für gesamten Render-Prozess
         ]
 
         try:

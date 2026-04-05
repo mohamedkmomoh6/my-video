@@ -1,4 +1,4 @@
-import {useState} from 'react';
+import {useEffect, useState} from 'react';
 import {Video, OffthreadVideo, Img, interpolate, spring, useRemotionEnvironment, useCurrentFrame, useVideoConfig} from 'remotion';
 
 type SlideVideoProps = {
@@ -23,6 +23,51 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 	const currentFrame = useCurrentFrame();
 	const {fps} = useVideoConfig();
 	const relativeFrame = currentFrame;
+
+	useEffect(() => {
+		if (!isVideo) {
+			setVideoDurationInFrames(null);
+			return;
+		}
+
+		let isActive = true;
+		const probe = document.createElement('video');
+		probe.preload = 'metadata';
+		probe.src = src;
+
+		const handleLoadedMetadata = () => {
+			if (!isActive) {
+				return;
+			}
+
+			const durationSeconds = probe.duration;
+			if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+				setVideoDurationInFrames(slideDuration);
+				return;
+			}
+
+			setVideoDurationInFrames(Math.ceil(durationSeconds * fps));
+		};
+
+		const handleMetadataError = () => {
+			if (!isActive) {
+				return;
+			}
+
+			setVideoDurationInFrames(slideDuration);
+		};
+
+		probe.addEventListener('loadedmetadata', handleLoadedMetadata);
+		probe.addEventListener('error', handleMetadataError);
+		probe.load();
+
+		return () => {
+			isActive = false;
+			probe.removeEventListener('loadedmetadata', handleLoadedMetadata);
+			probe.removeEventListener('error', handleMetadataError);
+			probe.src = '';
+		};
+	}, [fps, isVideo, slideDuration, src]);
 
 	// Hook-Zoom/Ken-Burns Steuerung pro Slide
 	const getAnimations = () => {
@@ -175,12 +220,6 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 				muted={true}
 				playbackRate={1}
 				loop={false}
-				onLoadedMetadata={(e) => {
-					const videoElement = e.target as HTMLVideoElement;
-					const durationSeconds = videoElement.duration;
-					const durationFrames = Math.ceil(durationSeconds * fps);
-					setVideoDurationInFrames(durationFrames);
-				}}
 				onError={() => {
 					console.warn(`⚠️ Video slide not found: ${src}`);
 					onError?.();

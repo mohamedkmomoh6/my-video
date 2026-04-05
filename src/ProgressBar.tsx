@@ -1,9 +1,14 @@
 import {interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
-import {PRIMARY} from './style-constants';
+import {getAccentColorByPreset} from './style-constants';
 
-export const ProgressBar: React.FC = () => {
+type ProgressBarProps = {
+	captionStylePreset?: string;
+};
+
+export const ProgressBar: React.FC<ProgressBarProps> = ({captionStylePreset}) => {
 	const currentFrame = useCurrentFrame();
 	const {durationInFrames} = useVideoConfig();
+	const accentColor = getAccentColorByPreset(captionStylePreset);
 
 	// Berechne den Fortschritt des Balkens basierend auf dem aktuellen Frame
 	const progressPercentage = interpolate(
@@ -30,8 +35,8 @@ export const ProgressBar: React.FC = () => {
 				style={{
 					width: `${progressPercentage}%`,
 					height: '100%',
-					backgroundColor: PRIMARY,
-					boxShadow: `0 0 15px ${PRIMARY}`,
+					backgroundColor: accentColor,
+					boxShadow: `0 0 15px ${accentColor}`,
 					transition: 'width 0.05s linear',
 				}}
 			/>

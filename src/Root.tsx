@@ -15,6 +15,8 @@ const SPEED_PRESETS = {
   natural: 2.8,
 } as const;
 
+const END_FADE_OUT_FRAMES = 15;
+
 type SpeedMode = keyof typeof subtitleGapPresets;
 
 const getSafeSpeedMode = (speedMode?: string): SpeedMode => {
@@ -52,7 +54,7 @@ export const RemotionRoot: React.FC = () => {
           speedMode: 'balanced',
           gapThreshold: subtitleGapPresets.balanced,
           chunkWindowSeconds: SPEED_PRESETS.balanced,
-          captionStylePreset: 'tiktok',
+          captionStylePreset: 'performanceOptimizer',
           autoScaleExtremeWords: true,
           debugCaptions: false,
           imageFolder: undefined,
@@ -117,7 +119,10 @@ export const RemotionRoot: React.FC = () => {
           }
 
           const durationInSeconds = await getAudioDurationInSeconds(staticFile(`${audioID}.mp3`));
-          const durationInFrames = Math.max(1, Math.ceil(durationInSeconds * 30));
+          const durationInFrames = Math.max(
+            1,
+            Math.ceil(durationInSeconds * 30) + END_FADE_OUT_FRAMES,
+          );
 
           return {
             durationInFrames,
