@@ -2,13 +2,14 @@
 import argparse
 import json
 import os
+import re
 import sys
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 from urllib import error, request
 
 DEFAULT_API_BASE = "https://api.wavespeed.ai/api/v3"
@@ -26,6 +27,8 @@ DEFAULT_HTTP_TIMEOUT = 60.0
 AUDIO_DIR = "./audio_input"
 SCRIPTS_DIR = "./scripts"
 SLIDES_BASE_DIR = "./public/slides"
+
+SLIDE_KEY_PATTERN = re.compile(r"^slide\s*(\d+)$", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -100,27 +103,52 @@ def list_audio_ids() -> List[str]:
     return sorted(audio_ids)
 
 
-def _ensure_prompt_list(data: object, source_path: Path) -> List[str]:
-    if not isinstance(data, dict):
-        raise ValueError(f"Ungültiges JSON in {source_path}: Erwartet Objekt mit Schlüssel 'prompts'.")
-
-    prompts_raw = data.get("prompts")
+def _validate_prompt_entries(prompts_raw: object, source_path: Path, field_label: str) -> List[str]:
     if not isinstance(prompts_raw, list):
-        raise ValueError(f"Ungültiges JSON in {source_path}: 'prompts' muss ein Array sein.")
+        raise ValueError(f"Ungültiges JSON in {source_path}: '{field_label}' muss ein Array sein.")
 
     prompts: List[str] = []
     for idx, entry in enumerate(prompts_raw):
         if not isinstance(entry, str):
-            raise ValueError(f"Ungültiger Prompt in {source_path}: prompts[{idx}] ist kein String.")
+            raise ValueError(f"Ungültiger Prompt in {source_path}: {field_label}[{idx}] ist kein String.")
         cleaned = entry.strip()
         if not cleaned:
-            raise ValueError(f"Ungültiger Prompt in {source_path}: prompts[{idx}] ist leer.")
+            raise ValueError(f"Ungültiger Prompt in {source_path}: {field_label}[{idx}] ist leer.")
         prompts.append(cleaned)
 
     if not prompts:
         raise ValueError(f"Ungültiges JSON in {source_path}: 'prompts' darf nicht leer sein.")
 
     return prompts
+
+
+def _normalize_prompt_payload(data: object, source_path: Path) -> Tuple[List[str], bool]:
+    if not isinstance(data, dict):
+        raise ValueError(f"Ungültiges JSON in {source_path}: Erwartet Objekt mit Schlüssel 'prompts'.")
+
+    if "prompts" in data:
+        prompts = _validate_prompt_entries(data.get("prompts"), source_path, "prompts")
+        normalized_payload = {"prompts": prompts}
+        changed = data != normalized_payload
+        return prompts, changed
+
+    slide_items: List[Tuple[int, object]] = []
+    for key, value in data.items():
+        if not isinstance(key, str):
+            continue
+        match = SLIDE_KEY_PATTERN.match(key.strip())
+        if not match:
+            continue
+        slide_items.append((int(match.group(1)), value))
+
+    if not slide_items:
+        raise ValueError(
+            f"Ungültiges JSON in {source_path}: Erwartet 'prompts' Array oder Slide0/Slide1/...-Objekt."
+        )
+
+    slide_items.sort(key=lambda item: item[0])
+    prompts = _validate_prompt_entries([value for _, value in slide_items], source_path, "Slide")
+    return prompts, True
 
 
 def load_prompts_json(prompt_file: Path) -> List[str]:
@@ -132,7 +160,21 @@ def load_prompts_json(prompt_file: Path) -> List[str]:
     except json.JSONDecodeError as exc:
         raise ValueError(f"Ungültiges JSON in {prompt_file}: {exc}") from exc
 
-    return _ensure_prompt_list(data, prompt_file)
+    prompts, changed = _normalize_prompt_payload(data, prompt_file)
+
+    if changed:
+        normalized_payload = {"prompts": prompts}
+        try:
+            prompt_file.write_text(
+                json.dumps(normalized_payload, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            raise ValueError(f"Konnte normalisierte Prompt-Datei nicht schreiben ({prompt_file}): {exc}") from exc
+
+        print(f"  ♻️ Prompt-JSON auto-korrigiert: {prompt_file} -> {{'prompts': [...]}}")
+
+    return prompts
 
 
 def build_jobs(

@@ -61,7 +61,7 @@ export const HookOverlay: React.FC<HookOverlayProps> = ({text, captionStylePrese
 				pointerEvents: 'none',
 				padding: '0 88px',
 				background:
-					'linear-gradient(180deg, rgba(0, 0, 0, 0.18) 0%, rgba(0, 0, 0, 0.3) 55%, rgba(0, 0, 0, 0.18) 100%)',
+					'linear-gradient(180deg, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.18) 55%, rgba(0, 0, 0, 0.08) 100%)',
 			}}
 		>
 			<div

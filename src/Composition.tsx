@@ -405,7 +405,7 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 	const hookBackgroundBrightness = interpolate(
 		currentFrame,
 		[0, Math.min(50, hookDurationFrames), hookDurationFrames],
-		[0.4, 0.4, 1],
+		[0.78, 0.84, 1],
 		{
 		extrapolateLeft: 'clamp',
 		extrapolateRight: 'clamp',
@@ -512,6 +512,7 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 							isVideo={isVideo}
 							slideDuration={slideDurationFrames}
 							brightness={hookBackgroundBrightness}
+							layerOpacity={isHookWindowActive ? 0.82 : 0.6}
 							onError={() => {
 								console.warn(`⚠️ Slide ${safeSlideIndex} (${isVideo ? 'video' : 'image'}) not found for folder "${imageFolder}"`);
 							}}

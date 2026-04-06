@@ -6,6 +6,7 @@ type SlideVideoProps = {
 	isVideo: boolean;
 	slideDuration: number;
 	brightness: number;
+	layerOpacity?: number;
 	style?: React.CSSProperties;
 	onError?: () => void;
 };
@@ -15,6 +16,7 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 	isVideo,
 	slideDuration,
 	brightness,
+	layerOpacity = 0.6,
 	style,
 	onError,
 }) => {
@@ -188,7 +190,7 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 		width: '100%',
 		height: '100%',
 		objectFit: 'cover',
-		opacity: 0.6,
+		opacity: layerOpacity,
 		transform: `scale(${scale}) rotate(${rotation}deg) translate(${translateX}px, ${translateY}px)`,
 		filter: `brightness(${brightness}) blur(${blur}px)`,
 		...style,
