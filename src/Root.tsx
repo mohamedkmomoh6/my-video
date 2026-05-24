@@ -1,6 +1,8 @@
 import {getAudioDurationInSeconds} from '@remotion/media-utils';
 import {Composition, staticFile} from 'remotion';
 import { MyComposition } from './Composition';
+import {MioFatturatoReel, MioFatturatoReelConfig} from './miofatturato/MioFatturatoReel';
+import { ILimiteCheNonVediAd, ILimiteCheNonVediAdConfig } from './ILimiteCheNonVediAd';
 import {type CaptionStylePresetConfig} from './caption-style-presets';
 
 const subtitleGapPresets = {
@@ -46,6 +48,22 @@ const getSafeImageFolder = (folder?: string): string | undefined => {
 export const RemotionRoot: React.FC = () => {
   return (
     <>
+      <Composition
+        id="MioFatturatoReel"
+        component={MioFatturatoReel}
+        durationInFrames={MioFatturatoReelConfig.durationInFrames}
+        fps={MioFatturatoReelConfig.fps}
+        width={MioFatturatoReelConfig.width}
+        height={MioFatturatoReelConfig.height}
+      />
+      <Composition
+        id="ILimiteCheNonVediAd"
+        component={ILimiteCheNonVediAd}
+        durationInFrames={ILimiteCheNonVediAdConfig.durationInFrames}
+        fps={ILimiteCheNonVediAdConfig.fps}
+        width={ILimiteCheNonVediAdConfig.width}
+        height={ILimiteCheNonVediAdConfig.height}
+      />
       <Composition
         id="MyVideo"
         component={MyComposition}

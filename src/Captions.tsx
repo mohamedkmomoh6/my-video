@@ -38,6 +38,8 @@ export const Captions: React.FC<CaptionsProps> = ({
 	const currentFrame = useCurrentFrame();
 	const {fps, width, height} = useVideoConfig();
 	const currentTime = currentFrame / fps;
+	const highlightLeadSeconds = 0.04;
+	const highlightReferenceTime = currentTime + highlightLeadSeconds;
 	const resolvedPresets = {
 		...DEFAULT_CAPTION_STYLE_PRESETS,
 		...(captionStylePresets ?? {}),
@@ -65,9 +67,9 @@ export const Captions: React.FC<CaptionsProps> = ({
 
 	const sortedWords = [...words].sort((a, b) => a.start - b.start);
 	const activeChunkIndex = sortedWords.findIndex(
-		(word) => currentFrame >= word.start * fps && currentFrame <= word.end * fps
+		(word) => highlightReferenceTime >= word.start && highlightReferenceTime <= word.end
 	);
-	const fallbackIndex = sortedWords.findIndex((word) => currentTime < word.start);
+	const fallbackIndex = sortedWords.findIndex((word) => highlightReferenceTime < word.start);
 	const resolvedChunkIndex =
 		activeChunkIndex >= 0
 			? activeChunkIndex
@@ -156,7 +158,7 @@ export const Captions: React.FC<CaptionsProps> = ({
 	});
 	const totalWeight = tokenWeights.reduce((sum, weight) => sum + weight, 0) || 1;
 	const elapsedInChunk = activeChunk
-		? Math.max(0, Math.min(activeChunkDuration, currentTime - activeChunk.start))
+		? Math.max(0, Math.min(activeChunkDuration, highlightReferenceTime - activeChunk.start))
 		: 0;
 	const elapsedWeightTarget = (elapsedInChunk / activeChunkDuration) * totalWeight;
 

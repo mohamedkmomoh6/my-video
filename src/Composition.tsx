@@ -46,7 +46,7 @@ type TimeRange = {
 	end: number;
 };
 
-const SENTENCE_BREAK_REGEX = /[.!?]["')\]]*$/;
+const SENTENCE_BREAK_REGEX = /[.!]["')\]]*$/;
 
 const SPEED_PRESETS = {
 	aggressive: 1.2,
@@ -521,7 +521,7 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 				);
 			})() : null}
 
-			<Sequence from={0} durationInFrames={hookDurationFrames}>
+			<Sequence durationInFrames={hookDurationFrames}>
 				<HookOverlay text={hookText} captionStylePreset={captionStylePreset} />
 			</Sequence>
 

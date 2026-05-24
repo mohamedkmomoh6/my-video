@@ -121,8 +121,66 @@ def _validate_prompt_entries(prompts_raw: object, source_path: Path, field_label
 
 
 def _normalize_prompt_payload(data: object, source_path: Path) -> Tuple[List[str], bool]:
+    if isinstance(data, list):
+        # Unterstützt folgende Listenformate:
+        # 1) ["prompt1", "prompt2", ...]
+        # 2) [{"slide": 1, "prompt": "..."}, ...]
+        if all(isinstance(item, str) for item in data):
+            prompts = _validate_prompt_entries(data, source_path, "prompts")
+            return prompts, True
+
+        if not all(isinstance(item, dict) for item in data):
+            raise ValueError(
+                f"Ungültiges JSON in {source_path}: Listenformat muss nur Strings oder Objekte mit 'prompt' enthalten."
+            )
+
+        entries = []
+        has_any_slide = False
+        has_all_slides = True
+
+        for idx, item in enumerate(data):
+            prompt_raw = item.get("prompt") if isinstance(item, dict) else None
+            if not isinstance(prompt_raw, str):
+                raise ValueError(
+                    f"Ungültiger Prompt in {source_path}: list[{idx}].prompt fehlt oder ist kein String."
+                )
+
+            prompt = prompt_raw.strip()
+            if not prompt:
+                raise ValueError(f"Ungültiger Prompt in {source_path}: list[{idx}].prompt ist leer.")
+
+            slide_value = item.get("slide") if isinstance(item, dict) else None
+            slide_number: Optional[int] = None
+            if slide_value is None:
+                has_all_slides = False
+            else:
+                has_any_slide = True
+                if isinstance(slide_value, int):
+                    slide_number = slide_value
+                elif isinstance(slide_value, str) and slide_value.strip().isdigit():
+                    slide_number = int(slide_value.strip())
+                else:
+                    raise ValueError(
+                        f"Ungültiger Slide-Wert in {source_path}: list[{idx}].slide muss Zahl oder Zahlen-String sein."
+                    )
+
+            entries.append((idx, slide_number, prompt))
+
+        if not entries:
+            raise ValueError(f"Ungültiges JSON in {source_path}: Prompt-Liste darf nicht leer sein.")
+
+        # Falls alle Einträge eine Slide-Nummer haben, deterministisch danach sortieren.
+        # Sonst ursprüngliche Reihenfolge beibehalten.
+        if has_any_slide and has_all_slides:
+            entries.sort(key=lambda item: (item[1], item[0]))
+
+        prompts = [prompt for _, __, prompt in entries]
+        return prompts, True
+
     if not isinstance(data, dict):
-        raise ValueError(f"Ungültiges JSON in {source_path}: Erwartet Objekt mit Schlüssel 'prompts'.")
+        raise ValueError(
+            f"Ungültiges JSON in {source_path}: Erwartet entweder Objekt (prompts/SlideX) oder Liste (Strings bzw. Objekte mit 'prompt')."
+        )
 
     if "prompts" in data:
         prompts = _validate_prompt_entries(data.get("prompts"), source_path, "prompts")
@@ -316,7 +374,8 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Manuelle Bildgenerierung aus JSON-Prompts über Google Gemini Image API. "
-            "Erwartet scripts/<audioID>.prompts.json mit {'prompts': [...]} und schreibt slideX.png nach public/slides/<audioID>/."
+            "Erwartet scripts/<audioID>.prompts.json (unterstützt: {'prompts': [...]}, {'Slide0': '...'}, "
+            "['...'], [{'slide': 1, 'prompt': '...'}]) und schreibt slideX.png nach public/slides/<audioID>/."
         )
     )
 

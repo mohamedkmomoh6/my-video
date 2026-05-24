@@ -43,6 +43,8 @@ Falls `.env` fehlt, erstelle sie oder setze die Variablen als Umgebungsvariablen
 
 ### Format (identisch für beide)
 
+**Empfohlenes Standardformat:**
+
 ```json
 {
   "prompts": [
@@ -53,6 +55,29 @@ Falls `.env` fehlt, erstelle sie oder setze die Variablen als Umgebungsvariablen
     "Slide4: A strong closing visual for the narrative..."
   ]
 }
+```
+
+**Zusätzlich akzeptierte Formate (werden automatisch auf `{"prompts": [...]}` normalisiert):**
+
+```json
+{
+  "Slide0": "Prompt 0...",
+  "Slide1": "Prompt 1..."
+}
+```
+
+```json
+[
+  "Prompt 0...",
+  "Prompt 1..."
+]
+```
+
+```json
+[
+  {"slide": 1, "prompt": "Prompt 0..."},
+  {"slide": 2, "prompt": "Prompt 1..."}
+]
 ```
 
 **Beispiel unterschiedlicher Prompts:**
