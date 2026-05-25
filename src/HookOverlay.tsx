@@ -1,10 +1,28 @@
 import {loadFont} from '@remotion/google-fonts/Montserrat';
-import {AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig} from 'remotion';
+import {
+	AbsoluteFill,
+	continueRender,
+	delayRender,
+	interpolate,
+	spring,
+	useCurrentFrame,
+	useVideoConfig,
+} from 'remotion';
 import {getAccentColorByPreset} from './style-constants';
 
-const {fontFamily} = loadFont('normal', {
+const {fontFamily, waitUntilDone} = loadFont('normal', {
 	weights: ['900'],
 });
+
+const handle = delayRender('Montserrat Font - HookOverlay');
+waitUntilDone()
+	.then(() => {
+		continueRender(handle);
+	})
+	.catch((err) => {
+		console.error('Failed to load Montserrat font for HookOverlay:', err);
+		continueRender(handle);
+	});
 
 type HookOverlayProps = {
 	text: string;

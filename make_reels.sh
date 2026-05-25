@@ -130,13 +130,13 @@ echo -e "${YELLOW}🎙️  Schritt 1: Transkribiere Audios mit Whisper...${NC}"
 python3 -u transcribe_audio.py
 [[ $? -ne 0 ]] && { echo -e "${RED}❌ Fehler in Schritt 1!${NC}"; exit 1; }
 
-# --- SCHRITT 1.5: Synchronisation & Korrektur (NEU) ---
-# Dieser Schritt poliert die JSONs basierend auf deinen .txt Dateien
-if [ -f "sync_captions.py" ]; then
-    echo -e "${YELLOW}🔧 Schritt 1.5: Synchronisiere Captions mit Original-Texten...${NC}"
-    python3 -u sync_captions.py
-    [[ $? -ne 0 ]] && { echo -e "${RED}❌ Fehler beim Synchronisieren!${NC}"; exit 1; }
-    echo -e "${GREEN}✅ Captions final korrigiert.${NC}"
+# --- SCHRITT 1.8: Frame-Extraktion (NEU) ---
+# Extrahiert den ersten Frame aus MP4-Slides als PNG für stabileres Rendern in Remotion
+if [ -f "extract_video_frames.py" ]; then
+    echo -e "${YELLOW}🎬 Schritt 1.8: Extrahiere erste Videoframes als PNG-Fallbacks...${NC}"
+    python3 -u extract_video_frames.py
+    [[ $? -ne 0 ]] && { echo -e "${RED}❌ Fehler bei der Frame-Extraktion!${NC}"; exit 1; }
+    echo -e "${GREEN}✅ Videoframes erfolgreich extrahiert.${NC}"
 fi
 
 # --- SCHRITT 2: Rendering ---

@@ -9,6 +9,7 @@ export type SubtitleChunk = {
 	start: number;
 	end: number;
 	isPowerWord?: boolean;
+	words?: WhisperWord[];
 };
 
 const SILENCE_TRIM_THRESHOLD_SECONDS = 0.1;
@@ -148,12 +149,14 @@ const splitChunkForDisplay = (chunk: SubtitleChunk): SubtitleChunk[] => {
 
 	type Segment = {
 		tokens: string[];
+		words: WhisperWord[];
 		startWeight: number;
 		endWeight: number;
 	};
 
 	const segments: Segment[] = [];
 	let currentTokens: string[] = [];
+	let currentWords: WhisperWord[] = [];
 	let currentStartWeight = 0;
 	let consumedWeight = 0;
 
@@ -164,16 +167,19 @@ const splitChunkForDisplay = (chunk: SubtitleChunk): SubtitleChunk[] => {
 
 		segments.push({
 			tokens: [...currentTokens],
+			words: [...currentWords],
 			startWeight: currentStartWeight,
 			endWeight: consumedWeight,
 		});
 		currentTokens = [];
+		currentWords = [];
 		currentStartWeight = consumedWeight;
 	};
 
 	for (let i = 0; i < rawTokens.length; i++) {
 		const token = rawTokens[i];
 		const weight = tokenWeights[i];
+		const wordObj = chunk.words ? chunk.words[i] : null;
 		const candidateTokens = [...currentTokens, token];
 		const candidateText = candidateTokens.join(' ');
 		const exceedsWordLimit = candidateTokens.length > MAX_WORDS_PER_DISPLAY_CHUNK;
@@ -184,6 +190,9 @@ const splitChunkForDisplay = (chunk: SubtitleChunk): SubtitleChunk[] => {
 		}
 
 		currentTokens.push(token);
+		if (wordObj) {
+			currentWords.push(wordObj);
+		}
 		consumedWeight += weight;
 	}
 
@@ -203,6 +212,7 @@ const splitChunkForDisplay = (chunk: SubtitleChunk): SubtitleChunk[] => {
 			text: segment.tokens.join(' '),
 			start,
 			end,
+			words: segment.words,
 		};
 	});
 };
@@ -243,11 +253,26 @@ export const groupWhisperWordsToChunks = (
 			continue;
 		}
 
+		// Merge punctuation-only tokens to preceding word
+		const isPunctuationOnly = /^[.!?,;:\-—–]+$/.test(cleanedWord);
+		if (isPunctuationOnly && currentChunk && currentChunk.words && currentChunk.words.length > 0) {
+			currentChunk.text = `${currentChunk.text}${cleanedWord}`;
+			const lastWordIndex = currentChunk.words.length - 1;
+			currentChunk.words[lastWordIndex] = {
+				...currentChunk.words[lastWordIndex],
+				word: `${currentChunk.words[lastWordIndex].word}${cleanedWord}`,
+				end: Math.max(currentChunk.words[lastWordIndex].end, wordItem.end)
+			};
+			currentChunk.end = Math.max(currentChunk.end, wordItem.end);
+			continue;
+		}
+
 		if (!currentChunk) {
 			currentChunk = {
 				text: cleanedWord,
 				start: wordItem.start,
 				end: wordItem.end,
+				words: [{ ...wordItem, word: cleanedWord }],
 			};
 			currentWordCount = 1;
 
@@ -267,11 +292,16 @@ export const groupWhisperWordsToChunks = (
 				text: cleanedWord,
 				start: wordItem.start,
 				end: wordItem.end,
+				words: [{ ...wordItem, word: cleanedWord }],
 			};
 			currentWordCount = 1;
 		} else {
 			currentChunk.text = `${currentChunk.text} ${cleanedWord}`.trim();
 			currentChunk.end = Math.max(currentChunk.end, wordItem.end);
+			if (!currentChunk.words) {
+				currentChunk.words = [];
+			}
+			currentChunk.words.push({ ...wordItem, word: cleanedWord });
 			currentWordCount += 1;
 		}
 

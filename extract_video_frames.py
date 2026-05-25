@@ -33,7 +33,18 @@ def extract_first_frame(mp4_path: str, png_path: str) -> bool:
         print(f"  ❌ Fehler beim Extrahieren: {e}")
         return False
 
+def configure_terminal_encoding() -> None:
+    # Ensure stdout/stderr use UTF-8 on Windows to avoid UnicodeEncodeError with emojis
+    for stream_name in ("stdout", "stderr"):
+        stream = getattr(sys, stream_name, None)
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except Exception:
+                pass
+
 def main():
+    configure_terminal_encoding()
     slides_dir = Path("public/slides")
     
     if not slides_dir.exists():

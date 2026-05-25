@@ -204,7 +204,6 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 					style={commonStyles}
 					muted={true}
 					playbackRate={1}
-					loop={false}
 					delayRenderTimeoutInMilliseconds={300000}
 					delayRenderRetries={8}
 					onError={() => {

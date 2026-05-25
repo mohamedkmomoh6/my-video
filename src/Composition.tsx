@@ -349,8 +349,20 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 				return !isDuplicateHookChunk;
 			});
 
+			const mappedCaptionChunks: CaptionChunk[] = dedupedGroupedWords.map((chunk) => ({
+				text: chunk.text,
+				start: chunk.start,
+				end: chunk.end,
+				isPowerWord: chunk.isPowerWord,
+				words: chunk.words?.map((w) => ({
+					text: w.word,
+					start: w.start,
+					end: w.end,
+				})),
+			}));
+
 			if (isMounted) {
-				setCaptionWords(dedupedGroupedWords);
+				setCaptionWords(mappedCaptionChunks);
 				setTranscriptionWords(parsedWords);
 				setVoiceRanges(mergedVoiceRanges);
 				setHookText(firstSentenceText);
