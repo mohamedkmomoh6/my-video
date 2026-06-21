@@ -12,6 +12,19 @@ SCRIPTS_DIR = "./scripts"  # NEU: Ordner für deine Original-Texte
 OUTPUT_DIR = "./public"     # Hier erwartet Remotion die Assets
 WHISPER_MODEL = "small"     # "base", "small" oder "medium" (je nach GPU-Power)
 
+def read_text_file_robust(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError:
+        try:
+            with open(path, "r", encoding="cp1252") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            with open(path, "r", encoding="latin-1", errors="replace") as f:
+                return f.read()
+
+
 def detect_language_from_script(script_path):
     """
     Erkennt die Sprache des Original-Skripts automatisch.
@@ -19,8 +32,7 @@ def detect_language_from_script(script_path):
     """
     try:
         if os.path.exists(script_path):
-            with open(script_path, 'r', encoding='utf-8') as f:
-                text = f.read()[:500]  # Erste 500 Zeichen für Detektierung
+            text = read_text_file_robust(script_path)[:500]  # Erste 500 Zeichen für Detektierung
             lang = detect(text)
             # Map ISO-Codes zu Whisper-Sprachcodes
             lang_map = {
@@ -48,8 +60,7 @@ def align_with_original_script(whisper_words, script_path):
 
     try:
         # 1. Original-Text laden
-        with open(script_path, 'r', encoding='utf-8') as f:
-            original_text = f.read()
+        original_text = read_text_file_robust(script_path)
         
         # Text in einzelne Wörter zerlegen
         raw_original_words = original_text.split()
