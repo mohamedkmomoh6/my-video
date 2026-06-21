@@ -135,6 +135,19 @@ def with_style(prompt: str) -> str:
     return f"{style} Scene idea: {prompt.strip()}"
 
 
+def read_text_file_robust(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    except UnicodeDecodeError:
+        try:
+            with open(path, "r", encoding="cp1252") as f:
+                return f.read()
+        except UnicodeDecodeError:
+            with open(path, "r", encoding="latin-1", errors="replace") as f:
+                return f.read()
+
+
 def load_prompts_for_audio(audio_id: str, slide_count: int) -> List[str]:
     json_path = os.path.join(SCRIPTS_DIR, f"{audio_id}.prompts.json")
     txt_path = os.path.join(SCRIPTS_DIR, f"{audio_id}.prompts.txt")
@@ -143,8 +156,11 @@ def load_prompts_for_audio(audio_id: str, slide_count: int) -> List[str]:
     prompts: List[str] = []
 
     if os.path.exists(json_path):
-        with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            content = read_text_file_robust(json_path)
+            data = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Ungültiges JSON in {json_path}: {exc}") from exc
 
         if isinstance(data, dict) and isinstance(data.get("prompts"), list):
             prompts = [str(p).strip() for p in data["prompts"] if str(p).strip()]
@@ -152,12 +168,11 @@ def load_prompts_for_audio(audio_id: str, slide_count: int) -> List[str]:
             prompts = [str(p).strip() for p in data if str(p).strip()]
 
     elif os.path.exists(txt_path):
-        with open(txt_path, "r", encoding="utf-8") as f:
-            prompts = [line.strip() for line in f.readlines() if line.strip()]
+        content = read_text_file_robust(txt_path)
+        prompts = [line.strip() for line in content.splitlines() if line.strip()]
 
     elif os.path.exists(script_path):
-        with open(script_path, "r", encoding="utf-8") as f:
-            script_text = f.read()
+        script_text = read_text_file_robust(script_path)
         prompts = split_script_into_chunks(script_text, slide_count)
 
     if not prompts:

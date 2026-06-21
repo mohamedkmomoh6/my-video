@@ -212,7 +212,14 @@ def load_prompts_json(prompt_file: Path, requested_slides: Optional[int]) -> Lis
         raise ValueError(f"Prompt-Datei fehlt: {prompt_file}")
 
     try:
-        data = json.loads(prompt_file.read_text(encoding="utf-8"))
+        try:
+            content = prompt_file.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            try:
+                content = prompt_file.read_text(encoding="cp1252")
+            except UnicodeDecodeError:
+                content = prompt_file.read_text(encoding="latin-1", errors="replace")
+        data = json.loads(content)
     except json.JSONDecodeError as exc:
         raise ValueError(f"Ungültiges JSON in {prompt_file}: {exc}") from exc
 
