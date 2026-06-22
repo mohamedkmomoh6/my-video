@@ -10,7 +10,7 @@ from langdetect import detect
 AUDIO_DIR = "./audio_input"
 SCRIPTS_DIR = "./scripts"  # NEU: Ordner für deine Original-Texte
 OUTPUT_DIR = "./public"     # Hier erwartet Remotion die Assets
-WHISPER_MODEL = "small"     # "base", "small" oder "medium" (je nach GPU-Power)
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "base")     # "tiny", "base", "small" oder "medium" (je nach GPU-Power)
 
 def read_text_file_robust(path: str) -> str:
     try:
