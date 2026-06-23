@@ -1,31 +1,112 @@
-import {useEffect, useState} from 'react';
-import {Video, OffthreadVideo, Img, interpolate, spring, useRemotionEnvironment, useCurrentFrame, useVideoConfig} from 'remotion';
+import { useEffect, useId, useState } from 'react';
+import {
+	AbsoluteFill,
+	Video,
+	OffthreadVideo,
+	Img,
+	Freeze,
+	Easing,
+	delayRender,
+	continueRender,
+	interpolate,
+	spring,
+	useRemotionEnvironment,
+	useCurrentFrame,
+	useVideoConfig,
+} from 'remotion';
 
 type SlideVideoProps = {
 	src: string;
 	isVideo: boolean;
 	slideDuration: number;
 	brightness: number;
+	/** Szenen-Index (0-basiert). Steuert die Drift-Richtung: gerade = links, ungerade = rechts. */
+	slideIndex: number;
+	/** Whip-Pan-In am Szenenanfang (von rechts herein). Aus für die allererste Szene. */
+	enableWhipIn?: boolean;
+	/** Whip-Pan-Out am Szenenende (nach links hinaus). Aus für die letzte Szene. */
+	enableWhipOut?: boolean;
 	layerOpacity?: number;
 	style?: React.CSSProperties;
 	onError?: () => void;
 };
+
+// Whip-Pan (Reißschwenk) Parameter
+const WHIP_FRAMES = 7;
+const WHIP_BLUR_MAX = 24;
 
 export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 	src,
 	isVideo,
 	slideDuration,
 	brightness,
+	slideIndex,
+	enableWhipIn = false,
+	enableWhipOut = false,
 	layerOpacity = 0.6,
 	style,
 	onError,
 }) => {
 	const [videoDurationInFrames, setVideoDurationInFrames] = useState<number | null>(null);
 	const env = useRemotionEnvironment();
-	const currentFrame = useCurrentFrame();
-	const {fps} = useVideoConfig();
-	const relativeFrame = currentFrame;
+	const relativeFrame = useCurrentFrame();
+	const { fps, width } = useVideoConfig();
+	// Eindeutige, url()-taugliche Filter-ID (useId liefert ":r0:" -> Doppelpunkte raus).
+	const whipFilterId = `whip-blur-${useId().replace(/:/g, '')}`;
 
+	// ----------------------------------------------------------------------------
+	// WHIP-PAN (Reißschwenk): Single-Layer-Übergang zwischen Szenen.
+	// Out = letzte 7 Frames der Szene (nach links raus), In = erste 7 Frames der
+	// nächsten Szene (von rechts rein). Liegt auf demselben äußeren Wrapper wie
+	// Zoom/Drift, also AUSSERHALB von <Freeze> -> ein eingefrorener Frame whippt
+	// sauber mit, ohne die Freeze-Logik zu zerstören.
+	// ----------------------------------------------------------------------------
+	const canWhip = slideDuration > WHIP_FRAMES * 2 + 2;
+	let whipTranslateX = 0;
+	let whipBlur = 0;
+
+	if (canWhip && enableWhipIn && relativeFrame < WHIP_FRAMES) {
+		const t = relativeFrame / WHIP_FRAMES;
+		const eased = Easing.out(Easing.cubic)(t);
+		whipTranslateX = interpolate(eased, [0, 1], [width, 0]);
+		whipBlur = interpolate(t, [0, 0.5, 1], [WHIP_BLUR_MAX, WHIP_BLUR_MAX * 0.6, 0], {
+			extrapolateLeft: 'clamp',
+			extrapolateRight: 'clamp',
+		});
+	} else if (canWhip && enableWhipOut && relativeFrame > slideDuration - WHIP_FRAMES) {
+		const t = (relativeFrame - (slideDuration - WHIP_FRAMES)) / WHIP_FRAMES;
+		const eased = Easing.in(Easing.cubic)(t);
+		whipTranslateX = interpolate(eased, [0, 1], [0, -width]);
+		whipBlur = interpolate(t, [0, 0.5, 1], [0, WHIP_BLUR_MAX * 0.6, WHIP_BLUR_MAX], {
+			extrapolateLeft: 'clamp',
+			extrapolateRight: 'clamp',
+		});
+	}
+
+	// Echter HORIZONTALER Motion-Blur via SVG (stdDeviation "X 0" -> nur X-Achse).
+	// Reads filmischer als isotropes CSS-blur(). Filter-Region weit aufgezogen,
+	// damit der Smear nicht clippt; sRGB-Interpolation gegen dunkle Kanten.
+	const isWhipping = whipBlur > 0;
+	const whipFilterCss = isWhipping ? `url(#${whipFilterId})` : '';
+	const whipFilterSvg = isWhipping ? (
+		<svg width={0} height={0} style={{ position: 'absolute' }} aria-hidden>
+			<defs>
+				<filter
+					id={whipFilterId}
+					x="-50%"
+					y="-10%"
+					width="200%"
+					height="120%"
+					colorInterpolationFilters="sRGB"
+				>
+					<feGaussianBlur in="SourceGraphic" stdDeviation={`${whipBlur} 0`} />
+				</filter>
+			</defs>
+		</svg>
+	) : null;
+
+	// Clip-Länge ermitteln. delayRender hält das Rendering an, bis die echte
+	// Video-Dauer bekannt ist – sonst kann der Freeze-Zeitpunkt beim Render danebenliegen.
 	useEffect(() => {
 		if (!isVideo) {
 			setVideoDurationInFrames(null);
@@ -33,30 +114,30 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 		}
 
 		let isActive = true;
+		const handle = delayRender(`Probing duration: ${src}`);
 		const probe = document.createElement('video');
 		probe.preload = 'metadata';
 		probe.src = src;
 
-		const handleLoadedMetadata = () => {
+		const finish = (frames: number) => {
 			if (!isActive) {
 				return;
 			}
+			setVideoDurationInFrames(frames);
+			continueRender(handle);
+		};
 
+		const handleLoadedMetadata = () => {
 			const durationSeconds = probe.duration;
 			if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
-				setVideoDurationInFrames(slideDuration);
+				finish(slideDuration);
 				return;
 			}
-
-			setVideoDurationInFrames(Math.ceil(durationSeconds * fps));
+			finish(Math.ceil(durationSeconds * fps));
 		};
 
 		const handleMetadataError = () => {
-			if (!isActive) {
-				return;
-			}
-
-			setVideoDurationInFrames(slideDuration);
+			finish(slideDuration);
 		};
 
 		probe.addEventListener('loadedmetadata', handleLoadedMetadata);
@@ -68,79 +149,108 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 			probe.removeEventListener('loadedmetadata', handleLoadedMetadata);
 			probe.removeEventListener('error', handleMetadataError);
 			probe.src = '';
+			continueRender(handle);
 		};
 	}, [fps, isVideo, slideDuration, src]);
 
-	// Hook-Zoom/Ken-Burns Steuerung pro Slide
-	const getAnimations = () => {
-		// Für Videos: Während der Wiedergabe KEIN Zoom/Ken-Burns.
-		// Ken-Burns nur im Restfenster nach Video-Ende bis Slidewechsel.
-		if (isVideo) {
-			const videoEndFrame = videoDurationInFrames ?? slideDuration;
+	// ----------------------------------------------------------------------------
+	// VIDEO-PFAD: durchgehender Retention-Zoom + Directional Drift über die ganze
+	// Szene (Video + Freeze). Der Transform liegt bewusst AUSSERHALB von <Freeze>,
+	// damit die Bewegung weiterläuft, während die Video-Pixel eingefroren sind.
+	// ----------------------------------------------------------------------------
+	if (isVideo) {
+		const sceneEndFrame = Math.max(1, slideDuration);
+		const linearProgress = interpolate(relativeFrame, [0, sceneEndFrame], [0, 1], {
+			extrapolateLeft: 'clamp',
+			extrapolateRight: 'clamp',
+		});
+		// Ease-in-out statt linear: startet "barely noticeable", läuft am Szenenende
+		// sanft aus (statt mechanischem Konstant-Drift). Lässt zudem dem Whip-Out
+		// die Bühne, da die Drift-Bewegung am Ende fast steht.
+		const progress = Easing.inOut(Easing.quad)(linearProgress);
 
-			if (relativeFrame < videoEndFrame) {
-				return {scale: 1, rotation: 0, blur: 0, translateX: 0, translateY: 0};
-			}
+		// Dezenter 3%-Zoom (Sweet-Spot 1.5-4%). Start bei 1.05 (nicht 1.0!) =>
+		// Overscan-Headroom, damit der Drift keine schwarze Kante hereinschiebt
+		// (objectFit: cover füllt bei 1.0 exakt).
+		const scale = interpolate(progress, [0, 1], [1.05, 1.08]);
 
-			const remainingFrames = Math.max(0, slideDuration - videoEndFrame);
-			if (remainingFrames <= 1) {
-				return {scale: 1, rotation: 0, blur: 0, translateX: 0, translateY: 0};
-			}
+		// Gerade Szenen driften nach links, ungerade nach rechts.
+		const driftDirection = slideIndex % 2 === 0 ? -1 : 1;
+		const translateX = interpolate(progress, [0, 1], [0, driftDirection * 18]);
+		const translateY = interpolate(progress, [0, 1], [0, -10]);
 
-			const intensityFactor = interpolate(remainingFrames, [2, 8, 20, 45], [0.2, 0.35, 0.75, 1], {
-				extrapolateLeft: 'clamp',
-				extrapolateRight: 'clamp',
-			});
-			const isCinematicShortWindow = remainingFrames <= 12;
-			const targetScale = isCinematicShortWindow
-				? 1 + 0.06 * intensityFactor
-				: 1 + 0.15 * intensityFactor;
-			const targetTranslateX = isCinematicShortWindow ? 0 : -12 * intensityFactor;
-			const targetTranslateY = isCinematicShortWindow
-				? -4 * intensityFactor
-				: -8 * intensityFactor;
+		// Freeze, sobald das Material zu Ende ist – auf dem letzten echten Frame.
+		const videoEndFrame = videoDurationInFrames ?? slideDuration;
+		const isFrozen = relativeFrame >= videoEndFrame;
+		const freezeFrame = Math.max(0, videoEndFrame - 1);
 
-			const kenBurnsStartFrame = videoEndFrame;
-			const kenBurnsEndFrame = Math.max(kenBurnsStartFrame + 1, slideDuration);
-			const kenBurnsScale = interpolate(
-				relativeFrame,
-				[kenBurnsStartFrame, kenBurnsEndFrame],
-				[1.0, targetScale],
-				{
-					extrapolateLeft: 'clamp',
-					extrapolateRight: 'clamp',
-				}
-			);
+		const wrapperStyle: React.CSSProperties = {
+			position: 'absolute',
+			inset: 0,
+			transform: `translateX(${whipTranslateX}px) scale(${scale}) translate(${translateX}px, ${translateY}px)`,
+			filter: isWhipping ? whipFilterCss : undefined,
+			...style,
+		};
 
-			const translateX = interpolate(
-				relativeFrame,
-				[kenBurnsStartFrame, kenBurnsEndFrame],
-				[0, targetTranslateX],
-				{
-					extrapolateLeft: 'clamp',
-					extrapolateRight: 'clamp',
-				}
-			);
+		const mediaStyle: React.CSSProperties = {
+			position: 'absolute',
+			inset: 0,
+			width: '100%',
+			height: '100%',
+			objectFit: 'cover',
+			opacity: layerOpacity,
+			filter: `brightness(${brightness})`,
+		};
 
-			const translateY = interpolate(
-				relativeFrame,
-				[kenBurnsStartFrame, kenBurnsEndFrame],
-				[0, targetTranslateY],
-				{
-					extrapolateLeft: 'clamp',
-					extrapolateRight: 'clamp',
-				}
-			);
+		const media = env.isRendering ? (
+			<OffthreadVideo
+				src={src}
+				style={mediaStyle}
+				muted
+				playbackRate={1}
+				delayRenderTimeoutInMilliseconds={300000}
+				delayRenderRetries={8}
+				onError={() => {
+					console.warn(`⚠️ Video slide not found: ${src}`);
+					onError?.();
+				}}
+			/>
+		) : (
+			<Video
+				src={src}
+				style={mediaStyle}
+				muted
+				playbackRate={1}
+				loop={false}
+				onError={() => {
+					console.warn(`⚠️ Video slide not found: ${src}`);
+					onError?.();
+				}}
+			/>
+		);
 
-			return {scale: kenBurnsScale, rotation: 0, blur: 0, translateX, translateY};
-		}
+		return (
+			<>
+				{whipFilterSvg}
+				<AbsoluteFill style={wrapperStyle}>
+					<Freeze frame={freezeFrame} active={isFrozen}>
+						{media}
+					</Freeze>
+				</AbsoluteFill>
+			</>
+		);
+	}
 
+	// ----------------------------------------------------------------------------
+	// BILD-PFAD: Hook-Zoom (erste 10 Frames) + Ken Burns. Unverändertes Verhalten.
+	// ----------------------------------------------------------------------------
+	const getImageAnimations = () => {
 		// Phase 1: Hook-Zoom (erste 10 Frames)
 		if (relativeFrame < 10) {
 			const springVal = spring({
 				fps,
 				frame: relativeFrame,
-				config: {damping: 8, stiffness: 280},
+				config: { damping: 8, stiffness: 280 },
 			});
 
 			const scale = interpolate(springVal, [0, 1], [1.5, 1.05], {
@@ -158,10 +268,10 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 				extrapolateRight: 'clamp',
 			});
 
-			return {scale, rotation, blur, translateX: 0, translateY: 0};
+			return { scale, rotation, blur, translateX: 0, translateY: 0 };
 		}
 
-		// Phase 3: Für Bilder - Ken Burns nach Frame 10
+		// Phase 2: Ken Burns nach Frame 10
 		const kenBurnsStartFrame = 10;
 		const kenBurnsEndFrame = Math.max(kenBurnsStartFrame + 20, slideDuration);
 		const kenBurnsScale = interpolate(relativeFrame, [kenBurnsStartFrame, kenBurnsEndFrame], [1.05, 1.15], {
@@ -179,78 +289,35 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 			extrapolateRight: 'clamp',
 		});
 
-		return {scale: kenBurnsScale, rotation: 0, blur: 0, translateX, translateY};
+		return { scale: kenBurnsScale, rotation: 0, blur: 0, translateX, translateY };
 	};
 
-	const {scale, rotation, blur, translateX, translateY} = getAnimations();
+	const { scale, rotation, blur, translateX, translateY } = getImageAnimations();
 
-	const commonStyles: React.CSSProperties = {
+	const imgStyle: React.CSSProperties = {
 		position: 'absolute',
 		inset: 0,
 		width: '100%',
 		height: '100%',
 		objectFit: 'cover',
 		opacity: layerOpacity,
-		transform: `scale(${scale}) rotate(${rotation}deg) translate(${translateX}px, ${translateY}px)`,
-		filter: `brightness(${brightness}) blur(${blur}px)`,
+		transform: `translateX(${whipTranslateX}px) scale(${scale}) rotate(${rotation}deg) translate(${translateX}px, ${translateY}px)`,
+		// Hook-Blur bleibt isotrop, Whip-Blur kommt als horizontaler SVG-Smear obendrauf.
+		filter: `brightness(${brightness}) blur(${blur}px) ${whipFilterCss}`.trim(),
 		...style,
 	};
 
-	if (isVideo && videoDurationInFrames !== null && relativeFrame >= videoDurationInFrames) {
-		const pngSrc = src.replace(/\.mp4$/i, '.png');
-		return (
-			<Img
-				src={pngSrc}
-				style={commonStyles}
-				onError={() => {
-					console.warn(`⚠️ Fallback image for video slide not found: ${pngSrc}`);
-					onError?.();
-				}}
-			/>
-		);
-	}
-
-	if (isVideo) {
-		if (env.isRendering) {
-			return (
-				<OffthreadVideo
-					src={src}
-					style={commonStyles}
-					muted={true}
-					playbackRate={1}
-					delayRenderTimeoutInMilliseconds={300000}
-					delayRenderRetries={8}
-					onError={() => {
-						console.warn(`⚠️ Video slide not found: ${src}`);
-						onError?.();
-					}}
-				/>
-			);
-		}
-
-		return (
-			<Video
-				src={src}
-				style={commonStyles}
-				muted={true}
-				playbackRate={1}
-				loop={false}
-				onError={() => {
-					console.warn(`⚠️ Video slide not found: ${src}`);
-					onError?.();
-				}}
-			/>
-		);
-	}
-
 	return (
-		<Img
-			src={src}
-			style={commonStyles}
-			onError={() => {
-				console.warn(`⚠️ Image slide not found: ${src}`);
-				onError?.();
-			}}
-		/>
+		<>
+			{whipFilterSvg}
+			<Img
+				src={src}
+				style={imgStyle}
+				onError={() => {
+					console.warn(`⚠️ Image slide not found: ${src}`);
+					onError?.();
+				}}
+			/>
+		</>
 	);
 };

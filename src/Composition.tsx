@@ -522,6 +522,9 @@ export const MyComposition: React.FC<MyCompositionProps> = ({
 						<SlideVideoComponent
 							src={currentSlide.src}
 							isVideo={isVideo}
+							slideIndex={safeSlideIndex}
+							enableWhipIn={currentSlideStartFrame > 0}
+							enableWhipOut={currentSlideIndex < images.length - 1}
 							slideDuration={slideDurationFrames}
 							brightness={hookBackgroundBrightness}
 							layerOpacity={isHookWindowActive ? 0.82 : 0.6}

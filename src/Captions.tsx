@@ -11,7 +11,7 @@ import {
 	type CaptionStylePresetConfig,
 	DEFAULT_CAPTION_STYLE_PRESETS,
 } from './caption-style-presets';
-import {getAccentColorByPreset} from './style-constants';
+import {getAccentColorByPreset, PRIMARY_GLOW_RGB} from './style-constants';
 
 const {fontFamily, waitUntilDone} = loadFont('normal', {
 	weights: ['900'],
@@ -151,7 +151,7 @@ export const Captions: React.FC<CaptionsProps> = ({
 	const highlightGlow =
 		captionStylePreset === 'performanceOptimizer'
 			? `0px 3px 6px rgba(0, 0, 0, 0.9), 0 0 18px ${accentColor}AA`
-			: '0px 3px 6px rgba(0, 0, 0, 0.9), 0 0 16px rgba(255, 215, 0, 0.75)';
+			: `0px 3px 6px rgba(0, 0, 0, 0.9), 0 0 16px rgba(${PRIMARY_GLOW_RGB}, 0.8), 0 0 34px rgba(${PRIMARY_GLOW_RGB}, 0.5)`;
 
 	const sortedWords = [...words].sort((a, b) => a.start - b.start);
 	const activeChunkIndex = sortedWords.findIndex(
@@ -256,13 +256,16 @@ export const Captions: React.FC<CaptionsProps> = ({
 				: currentTime;
 	}
 	const highlightedTokenStartFrame = Math.round(highlightedTokenStartTime * fps);
+	// Snappy Pop-In Bounce: leicht (mass 0.6) + steif (stiffness 250) => schneller,
+	// verspielter Bounce, passend zum Chibi-Vibe. Overshoot wird unten bei popScale
+	// bewusst auf 1.2 gekappt (= safetyScale der Font-Berechnung, layout-sicher).
 	const popSpring = spring({
 		frame: Math.max(0, currentFrame - highlightedTokenStartFrame),
 		fps,
 		config: {
 			damping: 12,
-			stiffness: 220,
-			mass: 0.8,
+			stiffness: 250,
+			mass: 0.6,
 		},
 	});
 	const popScale = activeChunk
@@ -274,6 +277,8 @@ export const Captions: React.FC<CaptionsProps> = ({
 	const effectivePopScale =
 		isSingleWordChunk && singleWordHasExtremeLength ? Math.min(1.06, popScale) : popScale;
 	const stableMinHeightEm = Math.max(1.4, Math.min(2, 1.2 + chunkWindowSeconds * 0.1));
+	// Font-relative, "extrem dicke" Outline (Sticker-Look) statt fixe 2px.
+	const textStrokeWidth = Math.max(3, Math.round(effectiveFontSize * 0.05));
 
 	return (
 		<div
@@ -303,7 +308,8 @@ export const Captions: React.FC<CaptionsProps> = ({
 					wordBreak: 'normal',
 					hyphens: 'none',
 					whiteSpace: 'normal',
-					WebkitTextStroke: '2px black',
+					WebkitTextStroke: `${textStrokeWidth}px black`,
+					paintOrder: 'stroke fill',
 					textShadow: '0px 3px 6px rgba(0, 0, 0, 0.9)',
 				}}
 			>

@@ -8,7 +8,7 @@ import {
 	useCurrentFrame,
 	useVideoConfig,
 } from 'remotion';
-import {getAccentColorByPreset} from './style-constants';
+import {getAccentColorByPreset, PRIMARY_GLOW_RGB} from './style-constants';
 
 const {fontFamily, waitUntilDone} = loadFont('normal', {
 	weights: ['900'],
@@ -38,7 +38,7 @@ export const HookOverlay: React.FC<HookOverlayProps> = ({text, captionStylePrese
 	const hookGlow =
 		captionStylePreset === 'performanceOptimizer'
 			? `0 0 20px ${accentColor}, 0 0 40px ${accentColor}88, 0 10px 24px rgba(0, 0, 0, 0.78)`
-			: '0 0 18px rgba(255, 215, 0, 0.75), 0 0 36px rgba(255, 215, 0, 0.55), 0 10px 24px rgba(0, 0, 0, 0.75)';
+			: `0 0 18px rgba(${PRIMARY_GLOW_RGB}, 0.75), 0 0 36px rgba(${PRIMARY_GLOW_RGB}, 0.55), 0 10px 24px rgba(0, 0, 0, 0.75)`;
 
 	if (!text) {
 		return null;

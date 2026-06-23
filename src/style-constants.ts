@@ -1,4 +1,7 @@
-export const PRIMARY = '#FFD700';
+// Neon-Gelb als Signaturfarbe (Biohacking x Chibi): höchster Kontrast auf
+// abgedunkeltem Footage, liest sich als "wissenschaftlicher Textmarker".
+export const PRIMARY = '#FFEA00';
+export const PRIMARY_GLOW_RGB = '255, 234, 0';
 export const BACKGROUND = '#000000';
 export const TEXT_MAIN = '#FFFFFF';
 
