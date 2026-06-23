@@ -196,6 +196,20 @@ export const SlideVideoComponent: React.FC<SlideVideoProps> = ({
 		...style,
 	};
 
+	if (isVideo && videoDurationInFrames !== null && relativeFrame >= videoDurationInFrames) {
+		const pngSrc = src.replace(/\.mp4$/i, '.png');
+		return (
+			<Img
+				src={pngSrc}
+				style={commonStyles}
+				onError={() => {
+					console.warn(`⚠️ Fallback image for video slide not found: ${pngSrc}`);
+					onError?.();
+				}}
+			/>
+		);
+	}
+
 	if (isVideo) {
 		if (env.isRendering) {
 			return (
